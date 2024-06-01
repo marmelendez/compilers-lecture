@@ -1,6 +1,7 @@
 %{
 #include <stdio.h>
 #include <time.h>
+#include <string.h>
 #include <stdlib.h>
 #include <sqlite3.h>
 
@@ -134,6 +135,11 @@ void yyerror(const char *s) {
     fprintf(stderr, "Lea: I didn't understand that.\n");
 }
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <sqlite3.h>
+#include <time.h>
+
 void get_recommendation(const char *type) {
     const char* phrases[] = {
         "I recommend",
@@ -145,26 +151,42 @@ void get_recommendation(const char *type) {
     };
     
     int num_phrases = sizeof(phrases) / sizeof(phrases[0]);
+    srand(time(NULL));  // Initialize random number generator
     int random_index = rand() % num_phrases;
     const char* random_phrase = phrases[random_index];
 
     sqlite3_stmt *stmt;
-    char sql[100]; 
-    snprintf(sql, sizeof(sql), "SELECT name FROM %s ORDER BY RANDOM() LIMIT 1", type);
+    const char *sql;
 
-    // Prepare the SQL statement
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
-        printf("Lea: Sorry! Something went wrong. Please try again later.\n");
+    if (strcmp(type, "Songs") == 0) {
+        sql = "SELECT Songs.name, Artists.name FROM Songs JOIN Artists ON Songs.artist_id = Artists.id ORDER BY RANDOM() LIMIT 1";
+    } else if (strcmp(type, "Albums") == 0) {
+        sql = "SELECT Albums.name, Artists.name FROM Albums JOIN Artists ON Albums.artist_id = Artists.id ORDER BY RANDOM() LIMIT 1";
+    } else if (strcmp(type, "Artists") == 0) {
+        sql = "SELECT name FROM Artists ORDER BY RANDOM() LIMIT 1";
+    } else {
+        fprintf(stderr, "Lea: Sorry, I don't know this kind of recommendation (%s).\n", type);
         return;
     }
 
-    // Execute the SQL statement and check the result
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+        return;
+    }
+
     int ret_code = sqlite3_step(stmt);
     if (ret_code == SQLITE_ROW) {
-        // Retrieve the name and age from the result row
-        const char *retrieved_name = (const char *)sqlite3_column_text(stmt, 0);
-        printf("Lea: %s %s.\n", random_phrase, retrieved_name);
-    } 
+        if (strcmp(type, "Artists") == 0) {
+            const char *artist_name = (const char *)sqlite3_column_text(stmt, 0);
+            printf("Lea: %s %s.\n", random_phrase, artist_name);
+        } else {
+            const char *retrieved_name = (const char *)sqlite3_column_text(stmt, 0);
+            const char *artist_name = (const char *)sqlite3_column_text(stmt, 1);
+            printf("Lea: %s %s by %s.\n", random_phrase, retrieved_name, artist_name);
+        }
+    } else {
+        fprintf(stderr, "No results found.\n");
+    }
 
     sqlite3_finalize(stmt);
 }
